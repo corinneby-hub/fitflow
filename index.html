@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0e0f13" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>FitFlow — Functional Workouts</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <h1>FitFlow</h1>
+    </div>
+    <span id="streak-badge" class="streak-badge hidden"></span>
+  </header>
+
+  <main id="main">
+
+    <!-- ============ WORKOUT TAB ============ -->
+    <section id="tab-workout" class="tab active">
+
+      <!-- Generator card (shown when no active workout) -->
+      <div id="generator" class="card generator">
+        <h2>New session</h2>
+        <p class="muted">Tell me how you feel today — sore shoulder, low energy, feeling strong… I'll adapt the workout.</p>
+
+        <textarea id="user-comment" rows="2" placeholder="e.g. My right shoulder is a bit sore, and I'm feeling tired today…"></textarea>
+
+        <div class="field-label">Session length</div>
+        <div id="duration-chips" class="chips">
+          <button class="chip" data-min="25">25 min</button>
+          <button class="chip" data-min="45">45 min</button>
+          <button class="chip" data-min="60">60 min</button>
+          <button class="chip chip-custom" data-min="custom">Custom</button>
+        </div>
+        <input type="number" id="custom-duration" class="hidden" min="10" max="180" placeholder="Minutes (e.g. 35)" />
+
+        <div class="field-label">Focus for today <span class="muted">(optional — overrides default goals)</span></div>
+        <div id="focus-chips" class="chips">
+          <button class="chip" data-focus="Full body">Full body</button>
+          <button class="chip" data-focus="Upper body">Upper</button>
+          <button class="chip" data-focus="Lower body">Lower</button>
+          <button class="chip" data-focus="Core">Core</button>
+          <button class="chip" data-focus="Glutes & legs">Glutes</button>
+          <button class="chip" data-focus="Back & posture">Back</button>
+        </div>
+
+        <button id="btn-generate" class="btn btn-primary btn-big">⚡ Generate workout</button>
+        <p id="generate-error" class="error hidden"></p>
+      </div>
+
+      <!-- Loading state -->
+      <div id="loading" class="card loading hidden">
+        <div class="spinner"></div>
+        <p id="loading-text">Building your workout…</p>
+      </div>
+
+      <!-- Active workout -->
+      <div id="workout-view" class="hidden">
+        <div class="card workout-header">
+          <div class="workout-title-row">
+            <h2 id="workout-title"></h2>
+            <button id="btn-discard" class="btn btn-ghost btn-small" title="Discard workout">✕</button>
+          </div>
+          <div id="workout-meta" class="workout-meta"></div>
+          <p id="coach-note" class="coach-note"></p>
+          <div class="progress-wrap">
+            <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+            <span id="progress-label" class="progress-label">0 done</span>
+          </div>
+        </div>
+
+        <div id="exercise-list"></div>
+
+        <button id="btn-finish" class="btn btn-primary btn-big">🏁 Finish session</button>
+      </div>
+
+      <!-- Finished confirmation -->
+      <div id="finished-view" class="card finished hidden">
+        <div class="finished-emoji">🎉</div>
+        <h2>Session saved!</h2>
+        <p id="finished-summary" class="muted"></p>
+        <button id="btn-new-workout" class="btn btn-primary">Start a new session</button>
+      </div>
+    </section>
+
+    <!-- ============ HISTORY TAB ============ -->
+    <section id="tab-history" class="tab">
+      <h2 class="tab-title">History</h2>
+      <p class="muted" id="history-empty">No sessions yet — finish your first workout and it will show up here.</p>
+      <div id="history-list"></div>
+    </section>
+
+    <!-- ============ SETTINGS TAB ============ -->
+    <section id="tab-settings" class="tab">
+      <h2 class="tab-title">Settings</h2>
+
+      <div class="card">
+        <div class="field-label">🏋️ My equipment</div>
+        <p class="muted small">List everything available in your home gym, one item per line or comma-separated.</p>
+        <textarea id="set-equipment" rows="4" placeholder="e.g.&#10;Dumbbells 3–10 kg&#10;Lifting bar with 5 kg and 10 kg plates&#10;Pilates ball, yoga block, resistance bands"></textarea>
+      </div>
+
+      <div class="card">
+        <div class="field-label">📊 My current level</div>
+        <p class="muted small">Write your current working weights/reps so suggestions match your level.</p>
+        <textarea id="set-levels" rows="4" placeholder="e.g.&#10;Romanian deadlift: 13 kg, 10 reps × 3 sets&#10;Triceps extension: 4 kg dumbbell, 10 reps × 3 sets&#10;Squats: bodyweight + 10 kg, 12 × 3"></textarea>
+      </div>
+
+      <div class="card">
+        <div class="field-label">🎯 My goals</div>
+        <p class="muted small">What matters to you — areas to focus on, general aims.</p>
+        <textarea id="set-goals" rows="3" placeholder="e.g. Full-body strength, extra focus on glutes and core, improve posture"></textarea>
+      </div>
+
+      <div class="card">
+        <div class="field-label">⏱️ Default session length</div>
+        <select id="set-duration">
+          <option value="25">25 minutes</option>
+          <option value="45" selected>45 minutes</option>
+          <option value="60">60 minutes</option>
+        </select>
+      </div>
+
+      <div class="card">
+        <div class="field-label">🔑 Anthropic API key</div>
+        <p class="muted small">Stored only on this device. Get a key at <span class="mono">console.anthropic.com</span>.</p>
+        <input type="password" id="set-apikey" placeholder="sk-ant-…" autocomplete="off" />
+      </div>
+
+      <button id="btn-save-settings" class="btn btn-primary btn-big">Save settings</button>
+      <p id="settings-saved" class="success hidden">✓ Saved</p>
+    </section>
+  </main>
+
+  <!-- ============ SWAP SHEET ============ -->
+  <div id="swap-overlay" class="overlay hidden">
+    <div class="sheet">
+      <h3>Swap exercise</h3>
+      <p class="muted">Replacing: <strong id="swap-target-name"></strong></p>
+      <textarea id="swap-reason" rows="2" placeholder="Why? (optional) e.g. hurts my knee, don't like it, want something harder…"></textarea>
+      <div class="sheet-buttons">
+        <button id="btn-swap-cancel" class="btn btn-ghost">Cancel</button>
+        <button id="btn-swap-confirm" class="btn btn-primary">🔄 Swap it</button>
+      </div>
+      <p id="swap-error" class="error hidden"></p>
+    </div>
+  </div>
+
+  <!-- ============ BOTTOM NAV ============ -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-tab="workout"><span class="nav-icon">💪</span>Workout</button>
+    <button class="nav-btn" data-tab="history"><span class="nav-icon">📅</span>History</button>
+    <button class="nav-btn" data-tab="settings"><span class="nav-icon">⚙️</span>Settings</button>
+  </nav>
+
+  <script src="js/storage.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
