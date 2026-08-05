@@ -73,6 +73,7 @@
           </div>
           <div id="workout-meta" class="workout-meta"></div>
           <p id="coach-note" class="coach-note"></p>
+          <div id="edit-banner" class="edit-banner hidden">✏️ Editing a saved session — your changes will update it in History</div>
           <div class="progress-wrap">
             <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
             <span id="progress-label" class="progress-label">0 done</span>
@@ -81,6 +82,7 @@
 
         <div id="exercise-list"></div>
 
+        <button id="btn-add-exercise" class="btn btn-add">➕ Add an exercise</button>
         <button id="btn-finish" class="btn btn-primary btn-big">🏁 Finish session</button>
       </div>
 
@@ -153,6 +155,34 @@
         <button id="btn-swap-confirm" class="btn btn-primary">🔄 Swap it</button>
       </div>
       <p id="swap-error" class="error hidden"></p>
+    </div>
+  </div>
+
+  <!-- ============ ADD EXERCISE SHEET ============ -->
+  <div id="add-overlay" class="overlay hidden">
+    <div class="sheet">
+      <h3>Add an exercise</h3>
+      <p class="muted">Pick a body part and I'll choose an exercise for you…</p>
+      <div id="bodypart-chips" class="chips">
+        <button class="chip" data-part="Chest">Chest</button>
+        <button class="chip" data-part="Back">Back</button>
+        <button class="chip" data-part="Shoulders">Shoulders</button>
+        <button class="chip" data-part="Arms (biceps & triceps)">Arms</button>
+        <button class="chip" data-part="Legs (quads & hamstrings)">Legs</button>
+        <button class="chip" data-part="Glutes">Glutes</button>
+        <button class="chip" data-part="Core & abs">Core</button>
+        <button class="chip" data-part="Full body / conditioning">Conditioning</button>
+      </div>
+
+      <div class="sheet-divider"><span>or name it yourself</span></div>
+      <input type="text" id="add-exercise-name" placeholder="e.g. Bulgarian split squat" autocomplete="off" />
+
+      <textarea id="add-note" rows="2" placeholder="Anything specific? (optional) e.g. something explosive, no jumping…"></textarea>
+      <div class="sheet-buttons">
+        <button id="btn-add-cancel" class="btn btn-ghost">Cancel</button>
+        <button id="btn-add-confirm" class="btn btn-primary">➕ Add exercise</button>
+      </div>
+      <p id="add-error" class="error hidden"></p>
     </div>
   </div>
 

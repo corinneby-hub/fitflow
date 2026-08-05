@@ -4,6 +4,7 @@ const Store = (() => {
     settings: "fitflow_settings",
     history: "fitflow_history",
     current: "fitflow_current_workout",
+    recent: "fitflow_recent_suggestions",
   };
 
   function read(key, fallback) {
@@ -39,6 +40,21 @@ const Store = (() => {
     },
     deleteSession(id) {
       write(KEYS.history, this.getHistory().filter(s => s.id !== id));
+    },
+    updateSession(id, patch) {
+      const h = this.getHistory();
+      const i = h.findIndex(s => s.id === id);
+      if (i === -1) return false;
+      h[i] = { ...h[i], ...patch };
+      write(KEYS.history, h);
+      return true;
+    },
+
+    getRecentSuggestions() { return read(KEYS.recent, []); },
+    addRecentSuggestion(names) {
+      const r = this.getRecentSuggestions();
+      r.unshift({ date: new Date().toISOString().slice(0, 10), names });
+      write(KEYS.recent, r.slice(0, 10)); // last 10 generations
     },
 
     getCurrentWorkout() { return read(KEYS.current, null); },

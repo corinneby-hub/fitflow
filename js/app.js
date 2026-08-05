@@ -3,8 +3,9 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => [...document.querySelectorAll(sel)];
 
-  let currentWorkout = null;   // { title, focus, total_minutes, coach_note, exercises:[{...,done}], comment, requestedMinutes }
+  let currentWorkout = null;
   let swapIndex = null;
+  let editingSessionId = null;   // set when editing a session from History
 
   const LOADING_MESSAGES = [
     "Building your workout…",
@@ -16,15 +17,14 @@
   let loadingTimer = null;
 
   /* ---------------- Tabs ---------------- */
+  function switchTab(name) {
+    $$(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+    $$(".tab").forEach(t => t.classList.toggle("active", t.id === `tab-${name}`));
+    if (name === "history") renderHistory();
+    window.scrollTo({ top: 0 });
+  }
   $$(".nav-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      $$(".nav-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      $$(".tab").forEach(t => t.classList.remove("active"));
-      $(`#tab-${btn.dataset.tab}`).classList.add("active");
-      if (btn.dataset.tab === "history") renderHistory();
-      window.scrollTo({ top: 0 });
-    });
+    btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
 
   /* ---------------- Chips ---------------- */
@@ -43,6 +43,7 @@
   }
   initChipGroup("#duration-chips", { deselectable: false });
   initChipGroup("#focus-chips");
+  initChipGroup("#bodypart-chips");
 
   function selectedDuration() {
     const chip = $("#duration-chips .chip.selected");
@@ -61,12 +62,8 @@
 
   function preselectDefaultDuration() {
     const def = String(Store.getSettings().defaultDuration);
-    $$("#duration-chips .chip").forEach(c => {
-      c.classList.toggle("selected", c.dataset.min === def);
-    });
-    if (!$("#duration-chips .chip.selected")) {
-      $$("#duration-chips .chip")[1].classList.add("selected"); // 45 fallback
-    }
+    $$("#duration-chips .chip").forEach(c => c.classList.toggle("selected", c.dataset.min === def));
+    if (!$("#duration-chips .chip.selected")) $$("#duration-chips .chip")[1].classList.add("selected");
   }
 
   /* ---------------- Generate ---------------- */
@@ -90,13 +87,16 @@
       const plan = await Api.generateWorkout({
         settings,
         history: Store.getHistory(),
+        recent: Store.getRecentSuggestions(),
         comment, minutes, focus,
       });
+      Store.addRecentSuggestion(plan.exercises.map(e => e.name));
+
       currentWorkout = {
         ...plan,
         comment,
         requestedMinutes: minutes,
-        exercises: plan.exercises.map(e => ({ ...e, done: false })),
+        exercises: plan.exercises.map(e => ({ ...e, done: false, actualSets: "", actualReps: "", actualWeight: "" })),
         startedAt: new Date().toISOString(),
       };
       Store.saveCurrentWorkout(currentWorkout);
@@ -109,7 +109,7 @@
     }
   });
 
-  function setLoading(on) {
+  function setLoading(on, text) {
     $("#loading").classList.toggle("hidden", !on);
     $("#generator").classList.toggle("hidden", on || !!currentWorkout);
     $("#workout-view").classList.toggle("hidden", on || !currentWorkout);
@@ -117,16 +117,20 @@
     clearInterval(loadingTimer);
     if (on) {
       let i = 0;
-      $("#loading-text").textContent = LOADING_MESSAGES[0];
-      loadingTimer = setInterval(() => {
-        i = Math.min(i + 1, LOADING_MESSAGES.length - 1);
-        $("#loading-text").textContent = LOADING_MESSAGES[i];
-      }, 6000);
+      $("#loading-text").textContent = text || LOADING_MESSAGES[0];
+      if (!text) {
+        loadingTimer = setInterval(() => {
+          i = Math.min(i + 1, LOADING_MESSAGES.length - 1);
+          $("#loading-text").textContent = LOADING_MESSAGES[i];
+        }, 6000);
+      }
     }
   }
 
   /* ---------------- Render workout ---------------- */
-  const SECTION_LABELS = { warmup: "🔥 Warm-up", main: "💪 Main workout", cooldown: "🧘 Cool-down" };
+  function workMinutes() {
+    return currentWorkout.exercises.reduce((sum, e) => sum + (e.minutes || 0), 0);
+  }
 
   function renderWorkout() {
     if (!currentWorkout) return;
@@ -134,30 +138,47 @@
     $("#finished-view").classList.add("hidden");
     $("#workout-view").classList.remove("hidden");
 
+    const editing = !!editingSessionId;
+    $("#edit-banner").classList.toggle("hidden", !editing);
+    $("#btn-finish").textContent = editing ? "💾 Save changes" : "🏁 Finish session";
+    $("#btn-discard").title = editing ? "Cancel editing" : "Discard workout";
+
     $("#workout-title").textContent = currentWorkout.title;
     $("#coach-note").textContent = currentWorkout.coach_note;
     $("#workout-meta").innerHTML = [
-      `⏱️ ~${currentWorkout.total_minutes} min`,
+      `⏱️ ~${workMinutes()} min of work`,
       `🎯 ${escapeHtml(currentWorkout.focus)}`,
       `${currentWorkout.exercises.length} exercises`,
+      `+ ${Api.RESERVED_MINUTES} min your own warm-up & stretch`,
     ].map(t => `<span class="meta-pill">${t}</span>`).join("");
 
     const list = $("#exercise-list");
     list.innerHTML = "";
-    let lastSection = null;
-
-    currentWorkout.exercises.forEach((ex, i) => {
-      if (ex.section !== lastSection) {
-        lastSection = ex.section;
-        const h = document.createElement("div");
-        h.className = "section-header";
-        h.textContent = SECTION_LABELS[ex.section] || ex.section;
-        list.appendChild(h);
-      }
-      list.appendChild(exerciseCard(ex, i));
-    });
+    currentWorkout.exercises.forEach((ex, i) => list.appendChild(exerciseCard(ex, i)));
 
     updateProgress();
+  }
+
+  // What the user actually did — falls back to the suggested values
+  function effective(ex) {
+    return {
+      sets: ex.actualSets || ex.sets,
+      reps: ex.actualReps || ex.reps,
+      weight: ex.actualWeight || ex.weight,
+    };
+  }
+
+  function isEdited(ex) {
+    const e = effective(ex);
+    return String(e.sets) !== String(ex.sets) || e.reps !== ex.reps || e.weight !== ex.weight;
+  }
+
+  function detailLine(ex) {
+    const e = effective(ex);
+    const main = `${escapeHtml(e.sets)} × ${escapeHtml(e.reps)} · ${escapeHtml(e.weight)} · ~${ex.minutes} min`;
+    if (!isEdited(ex)) return main;
+    return `${main} <span class="edited-badge">✎ edited</span>
+      <div class="ex-suggested">suggested: ${escapeHtml(ex.sets)} × ${escapeHtml(ex.reps)} · ${escapeHtml(ex.weight)}</div>`;
   }
 
   function exerciseCard(ex, i) {
@@ -165,24 +186,51 @@
     card.className = "exercise-card" + (ex.done ? " done" : "");
     card.dataset.index = i;
 
-    const detail = `${ex.sets} × ${escapeHtml(ex.reps)} · ${escapeHtml(ex.weight)} · ~${ex.minutes} min`;
     const ytUrl = "https://www.youtube.com/results?search_query=" + encodeURIComponent(ex.youtube_query);
+
+    const isFirst = i === 0;
+    const isLast = i === currentWorkout.exercises.length - 1;
 
     card.innerHTML = `
       <div class="ex-main">
         <div class="ex-check" role="checkbox" aria-checked="${ex.done}" title="Mark done">✓</div>
         <div class="ex-info">
           <div class="ex-name">${escapeHtml(ex.name)}</div>
-          <div class="ex-detail">${detail}</div>
+          <div class="ex-detail">${detailLine(ex)}</div>
+        </div>
+        <div class="ex-order">
+          <button class="ex-move" data-dir="-1" title="Move up" ${isFirst ? "disabled" : ""}>▲</button>
+          <button class="ex-move" data-dir="1" title="Move down" ${isLast ? "disabled" : ""}>▼</button>
         </div>
         <button class="ex-expand" title="Details">▾</button>
       </div>
       <div class="ex-body">
-        <div class="ex-instructions">${escapeHtml(ex.instructions)}</div>
+        <div class="actual-editor">
+          <div class="actual-head">
+            <label>💪 What you actually did</label>
+            <button class="btn-reset-actual" title="Reset to suggested">↺ Reset</button>
+          </div>
+          <div class="actual-grid">
+            <div class="actual-field">
+              <span>Sets</span>
+              <input type="text" inputmode="numeric" class="ex-sets-input" value="${escapeHtml(ex.actualSets || "")}" placeholder="${escapeHtml(ex.sets)}" />
+            </div>
+            <div class="actual-field">
+              <span>Reps</span>
+              <input type="text" class="ex-reps-input" value="${escapeHtml(ex.actualReps || "")}" placeholder="${escapeHtml(ex.reps)}" />
+            </div>
+            <div class="actual-field">
+              <span>Weight</span>
+              <input type="text" class="ex-weight-input" value="${escapeHtml(ex.actualWeight || "")}" placeholder="${escapeHtml(ex.weight)}" />
+            </div>
+          </div>
+          <div class="weight-hint">Suggested: ${escapeHtml(ex.sets)} × ${escapeHtml(ex.reps)} @ ${escapeHtml(ex.weight)}</div>
+        </div>
         <div class="ex-target">🎯 ${escapeHtml(ex.target)}</div>
+        <a class="btn btn-video" href="${ytUrl}" target="_blank" rel="noopener">▶ Watch how to do it</a>
         <div class="ex-actions">
-          <a class="btn btn-video" href="${ytUrl}" target="_blank" rel="noopener">▶ Watch video</a>
           <button class="btn btn-swap-ex">🔄 Swap</button>
+          <button class="btn btn-remove-ex">🗑 Remove</button>
         </div>
       </div>`;
 
@@ -194,11 +242,38 @@
       updateProgress();
     });
 
-    const toggle = () => card.classList.toggle("expanded");
+    if (ex._expanded) card.classList.add("expanded");
+    const toggle = () => { ex._expanded = card.classList.toggle("expanded"); };
     card.querySelector(".ex-info").addEventListener("click", toggle);
     card.querySelector(".ex-expand").addEventListener("click", toggle);
 
+    card.querySelectorAll(".ex-move").forEach(btn => {
+      btn.addEventListener("click", () => moveExercise(i, parseInt(btn.dataset.dir, 10)));
+    });
+
+    // --- sets / reps / weight editing ---
+    const inputs = {
+      actualSets: card.querySelector(".ex-sets-input"),
+      actualReps: card.querySelector(".ex-reps-input"),
+      actualWeight: card.querySelector(".ex-weight-input"),
+    };
+    const commit = () => {
+      Object.entries(inputs).forEach(([field, el]) => { ex[field] = el.value.trim(); });
+      Store.saveCurrentWorkout(currentWorkout);
+      card.querySelector(".ex-detail").innerHTML = detailLine(ex);
+    };
+    Object.values(inputs).forEach(el => {
+      el.addEventListener("change", commit);
+      el.addEventListener("blur", commit);
+      el.addEventListener("keydown", (e) => { if (e.key === "Enter") el.blur(); });
+    });
+    card.querySelector(".btn-reset-actual").addEventListener("click", () => {
+      Object.values(inputs).forEach(el => { el.value = ""; });
+      commit();
+    });
+
     card.querySelector(".btn-swap-ex").addEventListener("click", () => openSwap(i));
+    card.querySelector(".btn-remove-ex").addEventListener("click", () => removeExercise(i));
 
     return card;
   }
@@ -208,6 +283,29 @@
     const done = currentWorkout.exercises.filter(e => e.done).length;
     $("#progress-fill").style.width = total ? `${(done / total) * 100}%` : "0%";
     $("#progress-label").textContent = `${done}/${total} done`;
+  }
+
+  /* ---------------- Reorder ---------------- */
+  function moveExercise(index, dir) {
+    const list = currentWorkout.exercises;
+    const target = index + dir;
+    if (target < 0 || target >= list.length) return;
+    [list[index], list[target]] = [list[target], list[index]];
+    Store.saveCurrentWorkout(currentWorkout);
+    renderWorkout();
+    const moved = $$(".exercise-card")[target];
+    moved?.classList.add("just-moved");
+    moved?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    setTimeout(() => moved?.classList.remove("just-moved"), 600);
+  }
+
+  /* ---------------- Remove ---------------- */
+  function removeExercise(index) {
+    const ex = currentWorkout.exercises[index];
+    if (!confirm(`Remove "${ex.name}" from this workout?`)) return;
+    currentWorkout.exercises.splice(index, 1);
+    Store.saveCurrentWorkout(currentWorkout);
+    renderWorkout();
   }
 
   /* ---------------- Swap ---------------- */
@@ -225,7 +323,6 @@
   });
 
   $("#btn-swap-confirm").addEventListener("click", async () => {
-    const settings = Store.getSettings();
     const btn = $("#btn-swap-confirm");
     const errEl = $("#swap-error");
     errEl.classList.add("hidden");
@@ -234,12 +331,13 @@
 
     try {
       const result = await Api.swapExercise({
-        settings,
+        settings: Store.getSettings(),
         workout: currentWorkout,
         exercise: currentWorkout.exercises[swapIndex],
         reason: $("#swap-reason").value.trim(),
       });
-      currentWorkout.exercises[swapIndex] = { ...result.exercise, done: false };
+      currentWorkout.exercises[swapIndex] = { ...result.exercise, done: false, actualSets: "", actualReps: "", actualWeight: "" };
+      Store.addRecentSuggestion([result.exercise.name]);
       Store.saveCurrentWorkout(currentWorkout);
       $("#swap-overlay").classList.add("hidden");
       renderWorkout();
@@ -252,8 +350,111 @@
     }
   });
 
-  /* ---------------- Finish / discard ---------------- */
+  /* ---------------- Add exercise ---------------- */
+  $("#btn-add-exercise").addEventListener("click", () => {
+    $$("#bodypart-chips .chip").forEach(c => c.classList.remove("selected"));
+    $("#add-exercise-name").value = "";
+    $("#add-note").value = "";
+    $("#add-error").classList.add("hidden");
+    $("#add-overlay").classList.remove("hidden");
+  });
+
+  // The two inputs are alternatives — choosing one clears the other
+  $("#add-exercise-name").addEventListener("input", () => {
+    if ($("#add-exercise-name").value.trim()) {
+      $$("#bodypart-chips .chip").forEach(c => c.classList.remove("selected"));
+    }
+  });
+  $("#bodypart-chips").addEventListener("click", (e) => {
+    if (e.target.closest(".chip")) $("#add-exercise-name").value = "";
+  });
+
+  $("#btn-add-cancel").addEventListener("click", () => $("#add-overlay").classList.add("hidden"));
+  $("#add-overlay").addEventListener("click", (e) => {
+    if (e.target === $("#add-overlay")) $("#add-overlay").classList.add("hidden");
+  });
+
+  $("#btn-add-confirm").addEventListener("click", async () => {
+    const btn = $("#btn-add-confirm");
+    const errEl = $("#add-error");
+    errEl.classList.add("hidden");
+
+    const chip = $("#bodypart-chips .chip.selected");
+    const exerciseName = $("#add-exercise-name").value.trim();
+
+    if (!chip && !exerciseName) {
+      errEl.textContent = "Pick a body part, or type the name of an exercise.";
+      errEl.classList.remove("hidden");
+      return;
+    }
+
+    // Warn if they're naming something already in the session
+    if (exerciseName) {
+      const dupe = currentWorkout.exercises.find(
+        e => e.name.toLowerCase().trim() === exerciseName.toLowerCase()
+      );
+      if (dupe && !confirm(`"${dupe.name}" is already in this workout. Add it again anyway?`)) return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = exerciseName ? "Adding it…" : "Finding an exercise…";
+    try {
+      const result = await Api.addExercise({
+        settings: Store.getSettings(),
+        workout: currentWorkout,
+        bodyPart: chip ? chip.dataset.part : null,
+        exerciseName,
+        note: $("#add-note").value.trim(),
+      });
+      currentWorkout.exercises.push({ ...result.exercise, done: false, actualSets: "", actualReps: "", actualWeight: "" });
+      Store.addRecentSuggestion([result.exercise.name]);
+      Store.saveCurrentWorkout(currentWorkout);
+      $("#add-overlay").classList.add("hidden");
+      renderWorkout();
+      const cards = $$(".exercise-card");
+      cards[cards.length - 1]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.classList.remove("hidden");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "➕ Add exercise";
+    }
+  });
+
+  /* ---------------- Finish / save edits / discard ---------------- */
+  // Full exercise data is stored so a session can be reopened for editing later
+  function serializeExercises() {
+    return currentWorkout.exercises.map(e => ({
+      name: e.name,
+      sets: e.sets, reps: e.reps, weight: e.weight,
+      actualSets: e.actualSets || "", actualReps: e.actualReps || "", actualWeight: e.actualWeight || "",
+      equipment: e.equipment || "", target: e.target || "", minutes: e.minutes || 0,
+      youtube_query: e.youtube_query || `${e.name} form tutorial`,
+      done: e.done,
+    }));
+  }
+
   $("#btn-finish").addEventListener("click", () => {
+    // --- saving edits to an existing history entry ---
+    if (editingSessionId) {
+      Store.updateSession(editingSessionId, {
+        title: currentWorkout.title,
+        focus: currentWorkout.focus,
+        requestedMinutes: currentWorkout.requestedMinutes,
+        comment: currentWorkout.comment,
+        exercises: serializeExercises(),
+      });
+      editingSessionId = null;
+      currentWorkout = null;
+      Store.clearCurrentWorkout();
+      $("#workout-view").classList.add("hidden");
+      $("#generator").classList.remove("hidden");
+      updateStreak();
+      switchTab("history");
+      return;
+    }
+
     const done = currentWorkout.exercises.filter(e => e.done).length;
     const total = currentWorkout.exercises.length;
     if (done === 0 && !confirm("No exercises are marked as done. Finish anyway?")) return;
@@ -265,10 +466,7 @@
       focus: currentWorkout.focus,
       requestedMinutes: currentWorkout.requestedMinutes,
       comment: currentWorkout.comment,
-      exercises: currentWorkout.exercises.map(e => ({
-        name: e.name, section: e.section, sets: e.sets,
-        reps: e.reps, weight: e.weight, done: e.done,
-      })),
+      exercises: serializeExercises(),
     });
 
     $("#finished-summary").textContent = `You completed ${done} of ${total} exercises. It's saved to your history and will shape your next workouts.`;
@@ -289,12 +487,54 @@
   });
 
   $("#btn-discard").addEventListener("click", () => {
+    if (editingSessionId) {
+      if (!confirm("Stop editing? Changes you made here will not be saved to History.")) return;
+      editingSessionId = null;
+      currentWorkout = null;
+      Store.clearCurrentWorkout();
+      $("#workout-view").classList.add("hidden");
+      $("#generator").classList.remove("hidden");
+      switchTab("history");
+      return;
+    }
     if (!confirm("Discard this workout without saving it to history?")) return;
     currentWorkout = null;
     Store.clearCurrentWorkout();
     $("#workout-view").classList.add("hidden");
     $("#generator").classList.remove("hidden");
   });
+
+  /* ---------------- Edit a saved session ---------------- */
+  function startEditingSession(session) {
+    if (currentWorkout && !editingSessionId) {
+      alert("You have a workout in progress. Finish or discard it before editing a saved session.");
+      switchTab("workout");
+      return;
+    }
+    if (editingSessionId && editingSessionId !== session.id &&
+        !confirm("You're already editing another saved session. Switch to this one? Unsaved changes will be lost.")) return;
+
+    editingSessionId = session.id;
+    currentWorkout = {
+      _editingId: session.id,
+      title: session.title,
+      focus: session.focus,
+      coach_note: session.coach_note || `Saved session from ${formatDate(session.date)}.`,
+      requestedMinutes: session.requestedMinutes,
+      comment: session.comment || "",
+      exercises: session.exercises.map(e => ({
+        name: e.name,
+        sets: e.sets, reps: e.reps, weight: e.weight,
+        actualSets: e.actualSets || "", actualReps: e.actualReps || "", actualWeight: e.actualWeight || "",
+        equipment: e.equipment || "", target: e.target || "—", minutes: e.minutes || 0,
+        youtube_query: e.youtube_query || `${e.name} form tutorial`,
+        done: !!e.done,
+      })),
+    };
+    Store.saveCurrentWorkout(currentWorkout);
+    renderWorkout();
+    switchTab("workout");
+  }
 
   /* ---------------- History ---------------- */
   function renderHistory() {
@@ -315,14 +555,26 @@
         <div class="history-stats">🎯 ${escapeHtml(s.focus)} · ⏱️ ${s.requestedMinutes} min · ✅ ${done}/${s.exercises.length} done</div>
         <div class="history-exercises">
           ${s.comment ? `<div class="history-comment">💬 "${escapeHtml(s.comment)}"</div>` : ""}
-          ${s.exercises.map(e =>
-            `<div class="${e.done ? "hist-done" : "hist-skip"}">${e.done ? "✓" : "✕"} ${escapeHtml(e.name)} — ${e.sets}×${escapeHtml(e.reps)} @ ${escapeHtml(e.weight)}</div>`
-          ).join("")}
-          <button class="btn-delete-session">Delete this session</button>
+          ${s.exercises.map(e => {
+            const a = effective(e);
+            const changed = isEdited(e);
+            const planned = changed
+              ? ` <span class="weight-edited">(planned ${escapeHtml(e.sets)}×${escapeHtml(e.reps)} @ ${escapeHtml(e.weight)})</span>`
+              : "";
+            return `<div class="${e.done ? "hist-done" : "hist-skip"}">${e.done ? "✓" : "✕"} ${escapeHtml(e.name)} — ${escapeHtml(a.sets)}×${escapeHtml(a.reps)} @ ${escapeHtml(a.weight)}${planned}</div>`;
+          }).join("")}
+          <div class="history-actions">
+            <button class="btn btn-edit-session">✏️ Edit session</button>
+            <button class="btn btn-delete-session">🗑 Delete</button>
+          </div>
         </div>`;
 
       card.querySelector(".history-head").addEventListener("click", () => card.classList.toggle("expanded"));
       card.querySelector(".history-stats").addEventListener("click", () => card.classList.toggle("expanded"));
+      card.querySelector(".btn-edit-session").addEventListener("click", (e) => {
+        e.stopPropagation();
+        startEditingSession(s);
+      });
       card.querySelector(".btn-delete-session").addEventListener("click", (e) => {
         e.stopPropagation();
         if (confirm("Delete this session from history?")) {
@@ -389,6 +641,10 @@
     const saved = Store.getCurrentWorkout();
     if (saved) {
       currentWorkout = saved;
+      editingSessionId = saved._editingId || null;
+      currentWorkout.exercises.forEach(e => {
+        ["actualSets", "actualReps", "actualWeight"].forEach(f => { if (e[f] === undefined) e[f] = ""; });
+      });
       renderWorkout();
     }
 
