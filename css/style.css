@@ -284,31 +284,8 @@ textarea::placeholder, input::placeholder { color: #5a5f75; }
 .exercise-card.expanded .ex-body { display: block; }
 .ex-target { font-size: 0.82rem; margin-bottom: 12px; color: var(--accent-2); }
 
-/* ---------- Reorder controls ---------- */
-.ex-order {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.ex-move {
-  background: var(--bg-elev2);
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  border-radius: 6px;
-  width: 30px;
-  height: 22px;
-  font-size: 0.6rem;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
-}
-.ex-move:active:not(:disabled) { background: rgba(124, 108, 255, 0.2); color: var(--accent); }
-.ex-move:disabled { opacity: 0.25; cursor: default; }
-.exercise-card.just-moved { border-color: var(--accent); }
+/* Flash after saving edited numbers */
+.exercise-card.just-saved { border-color: var(--success); }
 .ex-actions { display: flex; gap: 8px; margin-top: 8px; }
 .ex-actions .btn { flex: 1; padding: 11px 8px; font-size: 0.86rem; }
 
@@ -331,18 +308,30 @@ textarea::placeholder, input::placeholder { color: #5a5f75; }
   font-size: 0.78rem;
   font-weight: 600;
 }
+.actual-head-btns { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .btn-reset-actual {
-  flex-shrink: 0;
   background: none;
   border: none;
   color: var(--text-dim);
   font-family: inherit;
   font-size: 0.72rem;
   cursor: pointer;
-  padding: 3px 6px;
+  padding: 4px 6px;
   border-radius: 6px;
 }
 .btn-reset-actual:active { background: var(--bg-elev); color: var(--accent); }
+.btn-save-actual {
+  background: var(--accent-grad);
+  color: #0b0c10;
+  border: none;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 5px 14px;
+}
+.btn-save-actual:active { transform: scale(0.96); }
 .actual-grid {
   display: grid;
   grid-template-columns: 0.7fr 0.85fr 1.6fr;
@@ -395,18 +384,14 @@ textarea::placeholder, input::placeholder { color: #5a5f75; }
 }
 .btn-add:active { background: rgba(124, 108, 255, 0.08); }
 .btn-video {
-  background: rgba(78, 205, 196, 0.14);
+  background: rgba(78, 205, 196, 0.12);
   color: var(--accent-2);
-  border: 1px solid rgba(78, 205, 196, 0.4);
+  border: 1px solid rgba(78, 205, 196, 0.35);
   text-decoration: none;
-  text-align: center;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  width: 100%;
-  padding: 13px;
-  font-size: 0.92rem;
+  gap: 4px;
 }
 .btn-swap-ex {
   background: rgba(124, 108, 255, 0.12);

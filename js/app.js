@@ -188,9 +188,6 @@
 
     const ytUrl = "https://www.youtube.com/results?search_query=" + encodeURIComponent(ex.youtube_query);
 
-    const isFirst = i === 0;
-    const isLast = i === currentWorkout.exercises.length - 1;
-
     card.innerHTML = `
       <div class="ex-main">
         <div class="ex-check" role="checkbox" aria-checked="${ex.done}" title="Mark done">✓</div>
@@ -198,17 +195,16 @@
           <div class="ex-name">${escapeHtml(ex.name)}</div>
           <div class="ex-detail">${detailLine(ex)}</div>
         </div>
-        <div class="ex-order">
-          <button class="ex-move" data-dir="-1" title="Move up" ${isFirst ? "disabled" : ""}>▲</button>
-          <button class="ex-move" data-dir="1" title="Move down" ${isLast ? "disabled" : ""}>▼</button>
-        </div>
         <button class="ex-expand" title="Details">▾</button>
       </div>
       <div class="ex-body">
         <div class="actual-editor">
           <div class="actual-head">
             <label>💪 What you actually did</label>
-            <button class="btn-reset-actual" title="Reset to suggested">↺ Reset</button>
+            <div class="actual-head-btns">
+              <button class="btn-reset-actual" title="Clear back to the suggested numbers">↺ Reset</button>
+              <button class="btn-save-actual">Save</button>
+            </div>
           </div>
           <div class="actual-grid">
             <div class="actual-field">
@@ -227,8 +223,8 @@
           <div class="weight-hint">Suggested: ${escapeHtml(ex.sets)} × ${escapeHtml(ex.reps)} @ ${escapeHtml(ex.weight)}</div>
         </div>
         <div class="ex-target">🎯 ${escapeHtml(ex.target)}</div>
-        <a class="btn btn-video" href="${ytUrl}" target="_blank" rel="noopener">▶ Watch how to do it</a>
         <div class="ex-actions">
+          <a class="btn btn-video" href="${ytUrl}" target="_blank" rel="noopener">▶ Watch</a>
           <button class="btn btn-swap-ex">🔄 Swap</button>
           <button class="btn btn-remove-ex">🗑 Remove</button>
         </div>
@@ -246,10 +242,6 @@
     const toggle = () => { ex._expanded = card.classList.toggle("expanded"); };
     card.querySelector(".ex-info").addEventListener("click", toggle);
     card.querySelector(".ex-expand").addEventListener("click", toggle);
-
-    card.querySelectorAll(".ex-move").forEach(btn => {
-      btn.addEventListener("click", () => moveExercise(i, parseInt(btn.dataset.dir, 10)));
-    });
 
     // --- sets / reps / weight editing ---
     const inputs = {
@@ -272,6 +264,15 @@
       commit();
     });
 
+    // Explicit save: stores the numbers, closes the card and flashes the updated summary
+    card.querySelector(".btn-save-actual").addEventListener("click", () => {
+      commit();
+      ex._expanded = false;
+      card.classList.remove("expanded");
+      card.classList.add("just-saved");
+      setTimeout(() => card.classList.remove("just-saved"), 900);
+    });
+
     card.querySelector(".btn-swap-ex").addEventListener("click", () => openSwap(i));
     card.querySelector(".btn-remove-ex").addEventListener("click", () => removeExercise(i));
 
@@ -283,20 +284,6 @@
     const done = currentWorkout.exercises.filter(e => e.done).length;
     $("#progress-fill").style.width = total ? `${(done / total) * 100}%` : "0%";
     $("#progress-label").textContent = `${done}/${total} done`;
-  }
-
-  /* ---------------- Reorder ---------------- */
-  function moveExercise(index, dir) {
-    const list = currentWorkout.exercises;
-    const target = index + dir;
-    if (target < 0 || target >= list.length) return;
-    [list[index], list[target]] = [list[target], list[index]];
-    Store.saveCurrentWorkout(currentWorkout);
-    renderWorkout();
-    const moved = $$(".exercise-card")[target];
-    moved?.classList.add("just-moved");
-    moved?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    setTimeout(() => moved?.classList.remove("just-moved"), 600);
   }
 
   /* ---------------- Remove ---------------- */
@@ -332,6 +319,7 @@
     try {
       const result = await Api.swapExercise({
         settings: Store.getSettings(),
+        history: Store.getHistory(),
         workout: currentWorkout,
         exercise: currentWorkout.exercises[swapIndex],
         reason: $("#swap-reason").value.trim(),
@@ -401,6 +389,7 @@
     try {
       const result = await Api.addExercise({
         settings: Store.getSettings(),
+        history: Store.getHistory(),
         workout: currentWorkout,
         bodyPart: chip ? chip.dataset.part : null,
         exerciseName,

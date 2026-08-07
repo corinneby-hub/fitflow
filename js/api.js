@@ -45,18 +45,47 @@ const Api = (() => {
     additionalProperties: false,
   };
 
-  function buildSystemPrompt(settings) {
+  // Most recent recorded performance per exercise — the primary level reference
+  function provenLevels(history) {
+    const seen = new Map();
+    (history || []).forEach(s => {              // history is newest-first
+      (s.exercises || []).forEach(e => {
+        const key = e.name.toLowerCase().trim();
+        if (seen.has(key)) return;              // keep only the latest entry per exercise
+        const a = actual(e);
+        const flags = [
+          wasAdjusted(e) ? "USER-ADJUSTED — this is their real capacity, not the suggestion" : null,
+          e.done ? null : "not completed",
+        ].filter(Boolean);
+        seen.set(key, `- ${e.name}: ${a.sets} × ${a.reps} @ ${a.weight} (${s.date}${flags.length ? "; " + flags.join("; ") : ""})`);
+      });
+    });
+    return [...seen.values()].slice(0, 30);
+  }
+
+  function buildSystemPrompt(settings, history) {
+    const proven = provenLevels(history);
     return [
       "You are an expert functional fitness coach creating personalized home workouts.",
       "",
       "USER PROFILE:",
       `Available equipment: ${settings.equipment || "Not specified — assume bodyweight only."}`,
-      `Current level (working weights/reps): ${settings.levels || "Not specified — assume a beginner and start conservative."}`,
       `Goals: ${settings.goals || "General full-body functional fitness."}`,
+      "",
+      "LEVEL CALIBRATION — FOLLOW THIS PRIORITY ORDER:",
+      "1. PROVEN LEVELS FROM RECORDED SESSIONS (below) are the primary and most reliable source. Where an entry is marked USER-ADJUSTED, the user overrode your suggestion with what they actually did — treat that number as the truth and never revert to the earlier suggested value.",
+      "2. THEN, for movements the recorded sessions do not cover — or if there are no recorded sessions at all — fall back to the user's written level notes below.",
+      "3. For anything neither source covers, infer a sensible level from the closest comparable movement in the proven levels.",
+      "",
+      "PROVEN LEVELS FROM RECORDED SESSIONS (most recent entry per exercise):",
+      proven.length ? proven.join("\n") : "No recorded sessions yet — use the written level notes below.",
+      "",
+      "WRITTEN LEVEL NOTES (secondary source):",
+      settings.levels || "Not specified — if there is also no history, assume a beginner and start conservative.",
       "",
       "HARD RULES:",
       "- Only suggest exercises doable with the listed equipment (bodyweight always allowed).",
-      "- Match loads/reps to the user's stated level; progress gradually based on history.",
+      "- Calibrate loads/reps using the priority order above, and progress gradually from the proven numbers.",
       "- Functional training style: compound movements, movement quality, balanced programming.",
       "- DO NOT include warm-up, mobility, cool-down or stretching exercises. The user handles those separately. Every exercise you return is a real working exercise.",
       "- VARIETY IS CRITICAL: you have a broad exercise library — do not default to the same staple exercises every time. Rotate movement patterns, implements, angles, and variations (e.g. single-leg, tempo, unilateral, different grips).",
@@ -180,10 +209,10 @@ const Api = (() => {
           : "This is one of the first workouts — establish good fundamentals.",
       ].join("\n");
 
-      return callClaude(settings.apiKey, buildSystemPrompt(settings), userMessage, WORKOUT_SCHEMA);
+      return callClaude(settings.apiKey, buildSystemPrompt(settings, history), userMessage, WORKOUT_SCHEMA);
     },
 
-    async swapExercise({ settings, workout, exercise, reason }) {
+    async swapExercise({ settings, history, workout, exercise, reason }) {
       const others = workout.exercises.filter(e => e !== exercise).map(e => e.name);
       const userMessage = [
         `In the current session "${workout.title}" (focus: ${workout.focus}), the user wants to REPLACE one exercise.`,
@@ -199,10 +228,10 @@ const Api = (() => {
         `Do NOT suggest any exercise already in the session: ${others.join(", ")}.`,
       ].join("\n");
 
-      return callClaude(settings.apiKey, buildSystemPrompt(settings), userMessage, SINGLE_EXERCISE_SCHEMA);
+      return callClaude(settings.apiKey, buildSystemPrompt(settings, history), userMessage, SINGLE_EXERCISE_SCHEMA);
     },
 
-    async addExercise({ settings, workout, bodyPart, exerciseName, note }) {
+    async addExercise({ settings, history, workout, bodyPart, exerciseName, note }) {
       const existing = workout.exercises.map(e => e.name);
 
       // Two modes: the user named an exact exercise, or asked for a body part
@@ -236,7 +265,7 @@ const Api = (() => {
         "- Session length is not a constraint here; the user has explicitly chosen to add volume.",
       ].filter(Boolean).join("\n");
 
-      return callClaude(settings.apiKey, buildSystemPrompt(settings), userMessage, SINGLE_EXERCISE_SCHEMA);
+      return callClaude(settings.apiKey, buildSystemPrompt(settings, history), userMessage, SINGLE_EXERCISE_SCHEMA);
     },
   };
 })();
