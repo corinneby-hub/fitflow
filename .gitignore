@@ -1,0 +1,9 @@
+# Local tooling — not part of the published site
+.claude/
+deploy/
+dev-server.ps1
+
+# OS noise
+Thumbs.db
+desktop.ini
+.DS_Store

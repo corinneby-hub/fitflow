@@ -3,7 +3,7 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => [...document.querySelectorAll(sel)];
 
-  const APP_VERSION = "v11";
+  const APP_VERSION = "v12";
 
   let currentWorkout = null;
   let swapIndex = null;
@@ -253,6 +253,8 @@
     };
     const commit = () => {
       Object.entries(inputs).forEach(([field, el]) => { ex[field] = el.value.trim(); });
+      ex.actualWeight = normalizeWeight(ex.actualWeight);
+      inputs.actualWeight.value = ex.actualWeight;   // show the unit back to the user
       Store.saveCurrentWorkout(currentWorkout);
       card.querySelector(".ex-detail").innerHTML = detailLine(ex);
     };
@@ -636,6 +638,15 @@
   });
 
   /* ---------------- Utils ---------------- */
+  // A bare number means kilograms. Anything already carrying words or a unit
+  // ("bodyweight", "18 kg", "10 lb", "red band") is left exactly as typed.
+  function normalizeWeight(value) {
+    const s = String(value ?? "").trim();
+    if (!s) return "";
+    if (/\d/.test(s) && /^[\d\s.,+\-*x×/]+$/i.test(s)) return `${s} kg`;
+    return s;
+  }
+
   function escapeHtml(str) {
     return String(str ?? "")
       .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
