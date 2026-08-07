@@ -3,7 +3,7 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => [...document.querySelectorAll(sel)];
 
-  const APP_VERSION = "v12";
+  const APP_VERSION = "v13";
 
   let currentWorkout = null;
   let swapIndex = null;
@@ -178,9 +178,8 @@
   function detailLine(ex) {
     const e = effective(ex);
     const main = `${escapeHtml(e.sets)} × ${escapeHtml(e.reps)} · ${escapeHtml(e.weight)} · ~${ex.minutes} min`;
-    if (!isEdited(ex)) return main;
-    return `${main} <span class="edited-badge">✎ edited</span>
-      <div class="ex-suggested">suggested: ${escapeHtml(ex.sets)} × ${escapeHtml(ex.reps)} · ${escapeHtml(ex.weight)}</div>`;
+    // The original suggestion is only shown inside the expanded editor
+    return isEdited(ex) ? `${main} <span class="edited-badge">✎ edited</span>` : main;
   }
 
   function exerciseCard(ex, i) {

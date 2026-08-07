@@ -364,7 +364,6 @@ textarea::placeholder, input::placeholder { color: #5a5f75; }
   padding: 2px 7px;
   white-space: nowrap;
 }
-.ex-suggested { font-size: 0.75rem; color: #5a5f75; margin-top: 3px; }
 
 .btn-remove-ex {
   background: rgba(255, 107, 107, 0.1);
