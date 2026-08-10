@@ -1,5 +1,5 @@
 /* FitFlow service worker — cache-first app shell */
-const CACHE = "fitflow-v13";
+const CACHE = "fitflow-v14";
 const SHELL = [
   "./",
   "./index.html",

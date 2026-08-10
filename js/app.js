@@ -3,7 +3,7 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => [...document.querySelectorAll(sel)];
 
-  const APP_VERSION = "v13";
+  const APP_VERSION = "v14";
 
   let currentWorkout = null;
   let swapIndex = null;
@@ -555,9 +555,9 @@
               : "";
             return `<div class="${e.done ? "hist-done" : "hist-skip"}">${e.done ? "✓" : "✕"} ${escapeHtml(e.name)} — ${escapeHtml(a.sets)}×${escapeHtml(a.reps)} @ ${escapeHtml(a.weight)}${planned}</div>`;
           }).join("")}
-          <div class="history-actions">
-            <button class="btn btn-edit-session">✏️ Edit session</button>
-            <button class="btn btn-delete-session">🗑 Delete</button>
+          <button class="btn btn-edit-session">✏️ Edit session</button>
+          <div class="history-danger">
+            <button class="btn-delete-session">Delete session</button>
           </div>
         </div>`;
 

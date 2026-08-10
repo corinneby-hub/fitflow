@@ -414,19 +414,33 @@ textarea::placeholder, input::placeholder { color: #5a5f75; }
 .history-comment { font-style: italic; }
 .hist-done { color: var(--success); }
 .hist-skip { color: #5a5f75; }
-.history-actions { display: flex; gap: 8px; margin-top: 12px; }
-.history-actions .btn { flex: 1; padding: 10px 8px; font-size: 0.84rem; }
 .btn-edit-session {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 8px;
+  font-size: 0.84rem;
   background: rgba(124, 108, 255, 0.12);
   color: var(--accent);
   border: 1px solid rgba(124, 108, 255, 0.35);
 }
-.btn-delete-session {
-  background: rgba(255, 107, 107, 0.1);
-  color: var(--danger);
-  border: 1px solid rgba(255, 107, 107, 0.3);
-  cursor: pointer;
+/* Deliberately quiet and set apart from Edit, to avoid mis-taps */
+.history-danger {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
 }
+.btn-delete-session {
+  background: none;
+  border: none;
+  color: #5a5f75;
+  font-family: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 3px 4px;
+}
+.btn-delete-session:active { color: var(--danger); }
 
 /* ---------- Edit-mode banner ---------- */
 .edit-banner {
