@@ -3,7 +3,7 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => [...document.querySelectorAll(sel)];
 
-  const APP_VERSION = "v15";
+  const APP_VERSION = "v16";
 
   let currentWorkout = null;
   let swapIndex = null;
@@ -291,8 +291,13 @@
   function updateProgress() {
     const total = currentWorkout.exercises.length;
     const done = currentWorkout.exercises.filter(e => e.done).length;
+    const minutesLeft = currentWorkout.exercises
+      .filter(e => !e.done)
+      .reduce((sum, e) => sum + (e.minutes || 0), 0);
     $("#progress-fill").style.width = total ? `${(done / total) * 100}%` : "0%";
-    $("#progress-label").textContent = `${done}/${total} done`;
+    $("#progress-label").textContent = minutesLeft > 0
+      ? `${done}/${total} · ~${minutesLeft} min left`
+      : `${done}/${total} done 🎉`;
   }
 
   /* ---------------- Long-press drag to reorder ---------------- */
@@ -716,6 +721,95 @@
     const ok = $("#settings-saved");
     ok.classList.remove("hidden");
     setTimeout(() => ok.classList.add("hidden"), 2000);
+  });
+
+  /* ---------------- Backup: export / import ---------------- */
+  function backupStatus(msg, isError) {
+    const el = $("#backup-status");
+    el.textContent = msg;
+    el.classList.remove("hidden");
+    el.classList.toggle("is-error", !!isError);
+  }
+
+  $("#btn-export").addEventListener("click", () => {
+    const history = Store.getHistory();
+    if (!history.length) {
+      backupStatus("Nothing to export yet — finish a session first.", true);
+      return;
+    }
+    const s = Store.getSettings();
+    const payload = {
+      app: "FitFlow",
+      type: "history-backup",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      // deliberately excludes the API key
+      settings: { equipment: s.equipment, levels: s.levels, goals: s.goals, defaultDuration: s.defaultDuration },
+      history,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `fitflow-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    backupStatus(`✓ Exported ${history.length} session${history.length === 1 ? "" : "s"}.`);
+  });
+
+  $("#btn-import").addEventListener("click", () => $("#import-file").click());
+
+  $("#import-file").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      let data;
+      try {
+        data = JSON.parse(await file.text());
+      } catch {
+        throw new Error("That file isn't a FitFlow backup — pick the .json file you exported.");
+      }
+      const incoming = Array.isArray(data) ? data : data.history;
+      if (!Array.isArray(incoming)) throw new Error("This file doesn't look like a FitFlow backup.");
+
+      const valid = incoming.filter(s => s && s.title && Array.isArray(s.exercises));
+      if (!valid.length) throw new Error("No workout sessions found in that file.");
+
+      const existing = Store.getHistory();
+      const existingIds = new Set(existing.map(s => s.id));
+      const toAdd = valid.filter(s => !existingIds.has(s.id));
+
+      if (!confirm(
+        `This backup holds ${valid.length} session${valid.length === 1 ? "" : "s"}.\n\n` +
+        `${toAdd.length} of them are new and will be added to the ${existing.length} you already have.\n` +
+        `Nothing will be deleted or overwritten.\n\nImport now?`
+      )) { e.target.value = ""; return; }
+
+      const merged = [...existing, ...toAdd]
+        .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || (b.id || 0) - (a.id || 0));
+      Store.setHistory(merged);
+
+      // Fill in profile settings only where this device has none (e.g. a new phone)
+      const cur = Store.getSettings();
+      const inc = data.settings || {};
+      const restored = [];
+      ["equipment", "levels", "goals"].forEach(k => {
+        if (!cur[k] && inc[k]) { cur[k] = inc[k]; restored.push(k); }
+      });
+      if (restored.length) { Store.saveSettings(cur); loadSettingsForm(); }
+
+      renderHistory();
+      updateStreak();
+      backupStatus(
+        `✓ Imported ${toAdd.length} new session${toAdd.length === 1 ? "" : "s"}` +
+        (restored.length ? `, and restored your ${restored.join(", ")}.` : ".")
+      );
+    } catch (err) {
+      backupStatus(err.message || "Could not read that file.", true);
+    }
+    e.target.value = "";
   });
 
   /* ---------------- Force refresh ---------------- */

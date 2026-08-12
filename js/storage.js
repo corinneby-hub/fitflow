@@ -41,6 +41,7 @@ const Store = (() => {
     deleteSession(id) {
       write(KEYS.history, this.getHistory().filter(s => s.id !== id));
     },
+    setHistory(list) { write(KEYS.history, list); },
     updateSession(id, patch) {
       const h = this.getHistory();
       const i = h.findIndex(s => s.id === id);

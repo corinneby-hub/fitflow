@@ -144,6 +144,17 @@
       <button id="btn-save-settings" class="btn btn-primary btn-big">Save settings</button>
       <p id="settings-saved" class="success hidden">✓ Saved</p>
 
+      <div class="card">
+        <div class="field-label">💾 Backup</div>
+        <p class="muted small">Your history lives only on this device. Export it to a file to keep it safe or move it to a new phone. Your API key is never included.</p>
+        <div class="backup-actions">
+          <button id="btn-export" class="btn btn-ghost">⬇️ Export</button>
+          <button id="btn-import" class="btn btn-ghost">⬆️ Import</button>
+        </div>
+        <input type="file" id="import-file" accept=".json,application/json" hidden />
+        <p id="backup-status" class="backup-status hidden"></p>
+      </div>
+
       <div class="card version-card">
         <div class="field-label">🔄 App version</div>
         <p class="muted small" id="app-version"></p>

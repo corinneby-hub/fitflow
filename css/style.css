@@ -465,6 +465,12 @@ textarea::placeholder, input::placeholder { color: #5a5f75; }
 }
 .btn-delete-session:active { color: var(--danger); }
 
+/* ---------- Backup ---------- */
+.backup-actions { display: flex; gap: 8px; margin-top: 12px; }
+.backup-actions .btn { flex: 1; padding: 11px 8px; font-size: 0.88rem; }
+.backup-status { font-size: 0.8rem; color: var(--success); margin-top: 10px; }
+.backup-status.is-error { color: var(--danger); }
+
 /* ---------- Edit-mode banner ---------- */
 .edit-banner {
   font-size: 0.82rem;
