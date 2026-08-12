@@ -79,6 +79,7 @@
             <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
             <span id="progress-label" class="progress-label">0 done</span>
           </div>
+          <p class="drag-hint">Tip: long-press an exercise to drag it into a new order</p>
         </div>
 
         <div id="exercise-list"></div>
@@ -158,6 +159,20 @@
       <h3>Swap exercise</h3>
       <p class="muted">Replacing: <strong id="swap-target-name"></strong></p>
       <textarea id="swap-reason" rows="2" placeholder="Why? (optional) e.g. hurts my knee, don't like it, want something harder…"></textarea>
+
+      <p class="muted small sheet-hint">Leave the options below empty and I'll pick a similar exercise — or steer it:</p>
+      <div id="swap-bodypart-chips" class="chips">
+        <button class="chip" data-part="Chest">Chest</button>
+        <button class="chip" data-part="Back">Back</button>
+        <button class="chip" data-part="Shoulders">Shoulders</button>
+        <button class="chip" data-part="Arms (biceps & triceps)">Arms</button>
+        <button class="chip" data-part="Legs (quads & hamstrings)">Legs</button>
+        <button class="chip" data-part="Glutes">Glutes</button>
+        <button class="chip" data-part="Core & abs">Core</button>
+        <button class="chip" data-part="Full body / conditioning">Conditioning</button>
+      </div>
+      <div class="sheet-divider"><span>or name the replacement yourself</span></div>
+      <input type="text" id="swap-exercise-name" placeholder="e.g. Bulgarian split squat" autocomplete="off" />
       <div class="sheet-buttons">
         <button id="btn-swap-cancel" class="btn btn-ghost">Cancel</button>
         <button id="btn-swap-confirm" class="btn btn-primary">🔄 Swap it</button>

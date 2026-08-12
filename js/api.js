@@ -212,8 +212,26 @@ const Api = (() => {
       return callClaude(settings.apiKey, buildSystemPrompt(settings, history), userMessage, WORKOUT_SCHEMA);
     },
 
-    async swapExercise({ settings, history, workout, exercise, reason }) {
+    async swapExercise({ settings, history, workout, exercise, reason, bodyPart, exerciseName }) {
       const others = workout.exercises.filter(e => e !== exercise).map(e => e.name);
+
+      // The user can name the replacement, pick a body part, or leave it to the coach
+      const steer = exerciseName
+        ? [
+            `REPLACE IT WITH THIS SPECIFIC EXERCISE: "${exerciseName}"`,
+            "- Program exactly this exercise. Use the user's own wording for the name where it is a real exercise; correct only obvious typos.",
+            "- If their available equipment cannot support it, program the closest viable variation and explain the substitution in \"why\".",
+            "- If the name is ambiguous, pick the most common interpretation for a home functional-training setting and say which one in \"why\".",
+          ]
+        : bodyPart
+        ? [
+            `THE REPLACEMENT MUST TRAIN: ${bodyPart}`,
+            "- Prefer a movement pattern the session does not already cover, so it complements the other exercises.",
+          ]
+        : [
+            "- Choose a replacement with similar target muscles, unless the reason given calls for something different.",
+          ];
+
       const userMessage = [
         `In the current session "${workout.title}" (focus: ${workout.focus}), the user wants to REPLACE one exercise.`,
         "",
@@ -221,11 +239,12 @@ const Api = (() => {
         describeCurrentWorkout(workout),
         "",
         `REPLACE: ${exercise.name}`,
-        reason ? `Reason given: "${reason}"` : "No reason given — just offer a different exercise.",
+        reason ? `Reason given: "${reason}"` : "No reason given.",
         "",
-        `Suggest ONE replacement with a similar time cost (~${exercise.minutes} min) and, unless the reason says otherwise, similar target muscles.`,
-        "Calibrate its sets, reps and load to the levels shown in the current session above — especially any numbers the user changed themselves.",
-        `Do NOT suggest any exercise already in the session: ${others.join(", ")}.`,
+        ...steer,
+        `- Keep a similar time cost (~${exercise.minutes} min).`,
+        "- Calibrate its sets, reps and load to the levels shown in the current session above — especially any numbers the user changed themselves.",
+        `- Do NOT suggest any exercise already in the session: ${others.join(", ")}.`,
       ].join("\n");
 
       return callClaude(settings.apiKey, buildSystemPrompt(settings, history), userMessage, SINGLE_EXERCISE_SCHEMA);

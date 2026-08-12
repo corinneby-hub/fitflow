@@ -3,7 +3,7 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => [...document.querySelectorAll(sel)];
 
-  const APP_VERSION = "v14";
+  const APP_VERSION = "v15";
 
   let currentWorkout = null;
   let swapIndex = null;
@@ -46,6 +46,7 @@
   initChipGroup("#duration-chips", { deselectable: false });
   initChipGroup("#focus-chips");
   initChipGroup("#bodypart-chips");
+  initChipGroup("#swap-bodypart-chips");
 
   function selectedDuration() {
     const chip = $("#duration-chips .chip.selected");
@@ -240,7 +241,10 @@
     });
 
     if (ex._expanded) card.classList.add("expanded");
-    const toggle = () => { ex._expanded = card.classList.toggle("expanded"); };
+    const toggle = () => {
+      if (suppressNextClick) return;                    // ignore the click that ends a drag
+      ex._expanded = card.classList.toggle("expanded");
+    };
     card.querySelector(".ex-info").addEventListener("click", toggle);
     card.querySelector(".ex-expand").addEventListener("click", toggle);
 
@@ -279,6 +283,8 @@
     card.querySelector(".btn-swap-ex").addEventListener("click", () => openSwap(i));
     card.querySelector(".btn-remove-ex").addEventListener("click", () => removeExercise(i));
 
+    enableDragReorder(card, ex);
+
     return card;
   }
 
@@ -287,6 +293,87 @@
     const done = currentWorkout.exercises.filter(e => e.done).length;
     $("#progress-fill").style.width = total ? `${(done / total) * 100}%` : "0%";
     $("#progress-label").textContent = `${done}/${total} done`;
+  }
+
+  /* ---------------- Long-press drag to reorder ---------------- */
+  const LONG_PRESS_MS = 400;
+  let suppressNextClick = false;
+
+  // Reads the current DOM order and writes it back to the workout
+  function commitOrderFromDom() {
+    const order = $$("#exercise-list .exercise-card").map(c => parseInt(c.dataset.index, 10));
+    currentWorkout.exercises = order.map(i => currentWorkout.exercises[i]);
+    Store.saveCurrentWorkout(currentWorkout);
+    renderWorkout();
+  }
+
+  function enableDragReorder(card, ex) {
+    const handle = card.querySelector(".ex-main");
+    let timer = null, dragging = false, startY = 0;
+
+    const blockScroll = (e) => { if (dragging) e.preventDefault(); };
+
+    handle.addEventListener("pointerdown", (e) => {
+      // Taps on the controls keep their normal behaviour
+      if (e.target.closest(".ex-check, .ex-expand, button, a, input, textarea")) return;
+
+      const list = $("#exercise-list");
+      const y0 = e.clientY;
+
+      const move = (ev) => {
+        if (!dragging) {
+          if (Math.abs(ev.clientY - y0) > 8) { clearTimeout(timer); timer = null; }  // scrolling, not holding
+          return;
+        }
+        card.style.transform = `translateY(${ev.clientY - startY}px)`;
+
+        const cardMid = card.getBoundingClientRect().top + card.offsetHeight / 2;
+        for (const other of $$("#exercise-list .exercise-card")) {
+          if (other === card) continue;
+          const r = other.getBoundingClientRect();
+          const otherMid = r.top + r.height / 2;
+          const cardIsAfter = !!(other.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING);
+          const before = card.offsetTop;
+          if (cardMid < otherMid && cardIsAfter) list.insertBefore(card, other);
+          else if (cardMid > otherMid && !cardIsAfter) list.insertBefore(card, other.nextSibling);
+          else continue;
+          startY += card.offsetTop - before;   // keep the card under the finger after it moves slot
+          card.style.transform = `translateY(${ev.clientY - startY}px)`;
+          break;
+        }
+      };
+
+      const up = () => {
+        clearTimeout(timer);
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", up);
+        document.removeEventListener("pointercancel", up);
+        document.removeEventListener("touchmove", blockScroll);
+        if (!dragging) return;
+        dragging = false;
+        card.classList.remove("dragging");
+        card.style.transform = "";
+        list.classList.remove("reordering");
+        suppressNextClick = true;                       // don't expand the card we just dropped
+        setTimeout(() => { suppressNextClick = false; }, 350);
+        commitOrderFromDom();
+      };
+
+      timer = setTimeout(() => {
+        dragging = true;
+        startY = y0;
+        ex._expanded = false;
+        card.classList.remove("expanded");
+        card.classList.add("dragging");
+        list.classList.add("reordering");
+        if (navigator.vibrate) navigator.vibrate(25);
+        document.addEventListener("touchmove", blockScroll, { passive: false });
+      }, LONG_PRESS_MS);
+
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", up);
+      document.addEventListener("pointercancel", up);
+    });
   }
 
   /* ---------------- Remove ---------------- */
@@ -303,9 +390,21 @@
     swapIndex = index;
     $("#swap-target-name").textContent = currentWorkout.exercises[index].name;
     $("#swap-reason").value = "";
+    $("#swap-exercise-name").value = "";
+    $$("#swap-bodypart-chips .chip").forEach(c => c.classList.remove("selected"));
     $("#swap-error").classList.add("hidden");
     $("#swap-overlay").classList.remove("hidden");
   }
+
+  // Body part and a typed name are alternatives — choosing one clears the other
+  $("#swap-exercise-name").addEventListener("input", () => {
+    if ($("#swap-exercise-name").value.trim()) {
+      $$("#swap-bodypart-chips .chip").forEach(c => c.classList.remove("selected"));
+    }
+  });
+  $("#swap-bodypart-chips").addEventListener("click", (e) => {
+    if (e.target.closest(".chip")) $("#swap-exercise-name").value = "";
+  });
 
   $("#btn-swap-cancel").addEventListener("click", () => $("#swap-overlay").classList.add("hidden"));
   $("#swap-overlay").addEventListener("click", (e) => {
@@ -326,6 +425,8 @@
         workout: currentWorkout,
         exercise: currentWorkout.exercises[swapIndex],
         reason: $("#swap-reason").value.trim(),
+        bodyPart: $("#swap-bodypart-chips .chip.selected")?.dataset.part || null,
+        exerciseName: $("#swap-exercise-name").value.trim(),
       });
       currentWorkout.exercises[swapIndex] = { ...result.exercise, done: false, actualSets: "", actualReps: "", actualWeight: "" };
       Store.addRecentSuggestion([result.exercise.name]);
