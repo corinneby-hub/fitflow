@@ -1,4 +1,4 @@
-/* FitFlow service worker — cache-first app shell */
+/* FitFlow service worker — network-first with an offline cache fallback */
 const CACHE = "fitflow-v17";
 const SHELL = [
   "./",
