@@ -26,7 +26,7 @@ const Store = (() => {
         equipment: "",
         levels: "",
         goals: "",
-        defaultDuration: 45,
+        defaultSize: "standard",
         apiKey: "",
       });
     },

@@ -3,9 +3,6 @@ const Api = (() => {
   const API_URL = "https://api.anthropic.com/v1/messages";
   const MODEL = "claude-opus-4-8";
 
-  // Minutes reserved (not programmed) for the user's own warm-up and stretching
-  const RESERVED_MINUTES = 10;
-
   const EXERCISE_SCHEMA = {
     type: "object",
     properties: {
@@ -44,6 +41,60 @@ const Api = (() => {
     required: ["exercise", "why"],
     additionalProperties: false,
   };
+
+  /* ---- Learning the user's habitual session shape ---- */
+
+  const BODY_PARTS = {
+    Glutes: ["glute", "hip thrust", "hip bridge"],
+    Core: ["core", " ab", "abs", "oblique", "plank", "trunk", "dead bug"],
+    Chest: ["chest", "pec", "push-up", "pushup", "press-up", "bench"],
+    Back: ["back", "lat", "row", "pull-up", "pullup", "rhomboid", "trap", "posture"],
+    Shoulders: ["shoulder", "delt", "overhead"],
+    Arms: ["bicep", "tricep", "curl", "arm"],
+    Legs: ["quad", "hamstring", "leg", "squat", "lunge", "calf", "thigh", "deadlift"],
+    Conditioning: ["cardio", "conditioning", "full body", "burpee", "metabolic", "sprint"],
+  };
+
+  function bodyPartOf(ex) {
+    const hay = `${ex.target || ""} ${ex.name || ""}`.toLowerCase();
+    for (const [part, keys] of Object.entries(BODY_PARTS)) {
+      if (keys.some(k => hay.includes(k))) return part;
+    }
+    return "Other";
+  }
+
+  // Typical session size + muscle-group mix, learned from recorded sessions
+  function learnPattern(history) {
+    const sessions = (history || []).slice(0, 12).filter(s => Array.isArray(s.exercises) && s.exercises.length);
+    if (!sessions.length) return null;
+
+    const counts = sessions.map(s => s.exercises.length).sort((a, b) => a - b);
+    const typical = counts[Math.floor(counts.length / 2)];      // median resists odd sessions
+
+    const tally = {};
+    sessions.forEach(s => s.exercises.forEach(e => {
+      const p = bodyPartOf(e);
+      tally[p] = (tally[p] || 0) + 1;
+    }));
+    const mix = Object.entries(tally)
+      .map(([part, n]) => ({ part, perSession: +(n / sessions.length).toFixed(1) }))
+      .sort((a, b) => b.perSession - a.perSession);
+
+    return { typical, sessions: sessions.length, mix };
+  }
+
+  // How many exercises each size tier means for this user
+  function tierCounts(history) {
+    const p = learnPattern(history);
+    const standard = p ? p.typical : 5;
+    return {
+      express: Math.max(3, Math.round(standard * 0.65)),
+      standard,
+      extended: Math.round(standard * 1.35),
+      learned: !!p,
+      basedOn: p ? p.sessions : 0,
+    };
+  }
 
   // Most recent recorded performance per exercise — the primary level reference
   function provenLevels(history) {
@@ -179,20 +230,32 @@ const Api = (() => {
   }
 
   return {
-    RESERVED_MINUTES,
+    learnPattern,
+    tierCounts,
 
-    async generateWorkout({ settings, history, recent, comment, minutes, focus }) {
-      const workMinutes = Math.max(15, minutes - RESERVED_MINUTES);
+    async generateWorkout({ settings, history, recent, comment, count, tier, focus }) {
       const already = recentNames(recent);
+      const pattern = learnPattern(history);
 
       const userMessage = [
-        `Create a functional workout session for today with ${workMinutes} minutes of actual working exercises.`,
-        `(The user's total session is ${minutes} minutes; ${RESERVED_MINUTES} minutes are reserved for their own warm-up and stretching, which you do NOT program.)`,
+        `Create a functional workout session made of EXACTLY ${count} exercises.`,
+        `Session size requested: ${tier.toUpperCase()} (${count} exercises).`,
         "",
-        "SESSION DENSITY:",
-        `- Fill the ${workMinutes} minutes with real working exercises — aim for roughly one exercise per 7-9 minutes, so around ${Math.max(3, Math.round(workMinutes / 8))} exercises.`,
+        "SESSION SIZE AND BALANCE — THIS IS THE LENGTH CONTROL, NOT TIME:",
+        `- Return exactly ${count} exercises. Not more, not fewer.`,
         "- No warm-up, mobility or cool-down entries. Working exercises only.",
-        "- The sum of the exercises' minutes should be close to the working minutes above.",
+        pattern
+          ? [
+              `- The user's habitual session is ${pattern.typical} exercises, with this muscle-group mix per session: ` +
+                pattern.mix.map(m => `${m.part} ${m.perSession}`).join(", ") + ".",
+              `- Mirror that mix, scaled proportionally to ${count} exercises.`,
+              tier === "express"
+                ? "- This is a SHORTER session: trim proportionally across the mix rather than deleting a muscle group the user trains regularly. Protect the areas named in their goals first."
+                : tier === "extended"
+                ? "- This is a LONGER session: add work that deepens the same balance, favouring the areas named in their goals. Do not pile the extra volume onto one area."
+                : "- Keep the balance close to their usual distribution.",
+            ].join("\n")
+          : "- No session history yet: build a balanced session across the main movement patterns, weighted toward the user's stated goals.",
         "",
         focus ? `Today's requested focus: ${focus}.` : "Focus: follow the user's general goals.",
         comment ? `The user says today: "${comment}" — take this seriously and adapt the session.` : "The user left no comment today.",

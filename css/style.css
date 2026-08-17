@@ -137,7 +137,7 @@ textarea::placeholder, input::placeholder { color: #5a5f75; }
   color: var(--text);
   font-weight: 600;
 }
-#custom-duration { margin-top: 10px; }
+.size-note { font-size: 0.75rem; color: var(--text-dim); margin-top: 9px; }
 
 /* ---------- Buttons ---------- */
 .btn {

@@ -36,14 +36,13 @@
 
         <textarea id="user-comment" rows="2" placeholder="e.g. My right shoulder is a bit sore, and I'm feeling tired today…"></textarea>
 
-        <div class="field-label">Session length</div>
-        <div id="duration-chips" class="chips">
-          <button class="chip" data-min="25">25 min</button>
-          <button class="chip" data-min="45">45 min</button>
-          <button class="chip" data-min="60">60 min</button>
-          <button class="chip chip-custom" data-min="custom">Custom</button>
+        <div class="field-label">Session size</div>
+        <div id="size-chips" class="chips">
+          <button class="chip" data-size="express">Express</button>
+          <button class="chip" data-size="standard">Standard</button>
+          <button class="chip" data-size="extended">Extended</button>
         </div>
-        <input type="number" id="custom-duration" class="hidden" min="10" max="180" placeholder="Minutes (e.g. 35)" />
+        <p id="size-note" class="size-note"></p>
 
         <div class="field-label">Focus for today <span class="muted">(optional — overrides default goals)</span></div>
         <div id="focus-chips" class="chips">
@@ -127,11 +126,12 @@
       </div>
 
       <div class="card">
-        <div class="field-label">⏱️ Default session length</div>
-        <select id="set-duration">
-          <option value="25">25 minutes</option>
-          <option value="45" selected>45 minutes</option>
-          <option value="60">60 minutes</option>
+        <div class="field-label">📋 Default session size</div>
+        <p class="muted small">Sizes are learned from your history — the more sessions you log, the better they fit.</p>
+        <select id="set-size">
+          <option value="express">Express — shorter</option>
+          <option value="standard" selected>Standard — your usual</option>
+          <option value="extended">Extended — longer</option>
         </select>
       </div>
 

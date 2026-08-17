@@ -3,7 +3,7 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => [...document.querySelectorAll(sel)];
 
-  const APP_VERSION = "v16";
+  const APP_VERSION = "v17";
 
   let currentWorkout = null;
   let swapIndex = null;
@@ -38,24 +38,18 @@
       const wasSelected = chip.classList.contains("selected");
       container.querySelectorAll(".chip").forEach(c => c.classList.remove("selected"));
       if (!(wasSelected && deselectable)) chip.classList.add("selected");
-      if (containerId === "#duration-chips") {
-        $("#custom-duration").classList.toggle("hidden", chip.dataset.min !== "custom" || !chip.classList.contains("selected"));
-      }
     });
   }
-  initChipGroup("#duration-chips", { deselectable: false });
+  initChipGroup("#size-chips", { deselectable: false });
   initChipGroup("#focus-chips");
   initChipGroup("#bodypart-chips");
   initChipGroup("#swap-bodypart-chips");
 
-  function selectedDuration() {
-    const chip = $("#duration-chips .chip.selected");
-    if (!chip) return Store.getSettings().defaultDuration;
-    if (chip.dataset.min === "custom") {
-      const v = parseInt($("#custom-duration").value, 10);
-      return (v >= 10 && v <= 180) ? v : Store.getSettings().defaultDuration;
-    }
-    return parseInt(chip.dataset.min, 10);
+  const TIER_LABELS = { express: "Express", standard: "Standard", extended: "Extended" };
+
+  function selectedTier() {
+    const chip = $("#size-chips .chip.selected");
+    return chip ? chip.dataset.size : (Store.getSettings().defaultSize || "standard");
   }
 
   function selectedFocus() {
@@ -63,10 +57,20 @@
     return chip ? chip.dataset.focus : null;
   }
 
-  function preselectDefaultDuration() {
-    const def = String(Store.getSettings().defaultDuration);
-    $$("#duration-chips .chip").forEach(c => c.classList.toggle("selected", c.dataset.min === def));
-    if (!$("#duration-chips .chip.selected")) $$("#duration-chips .chip")[1].classList.add("selected");
+  // Chip labels carry the learned exercise counts, e.g. "Standard · 6"
+  function renderSizeChips() {
+    const counts = Api.tierCounts(Store.getHistory());
+    $$("#size-chips .chip").forEach(c => {
+      const tier = c.dataset.size;
+      c.textContent = `${TIER_LABELS[tier]} · ${counts[tier]}`;
+    });
+    $("#size-note").textContent = counts.learned
+      ? `Learned from your last ${counts.basedOn} session${counts.basedOn === 1 ? "" : "s"}: you usually do ${counts.standard} exercises.`
+      : `No history yet — starting from a ${counts.standard}-exercise standard session.`;
+
+    const def = Store.getSettings().defaultSize || "standard";
+    $$("#size-chips .chip").forEach(c => c.classList.toggle("selected", c.dataset.size === def));
+    if (!$("#size-chips .chip.selected")) $$("#size-chips .chip")[1].classList.add("selected");
   }
 
   /* ---------------- Generate ---------------- */
@@ -82,7 +86,8 @@
     }
 
     const comment = $("#user-comment").value.trim();
-    const minutes = selectedDuration();
+    const tier = selectedTier();
+    const count = Api.tierCounts(Store.getHistory())[tier];
     const focus = selectedFocus();
 
     setLoading(true);
@@ -91,14 +96,15 @@
         settings,
         history: Store.getHistory(),
         recent: Store.getRecentSuggestions(),
-        comment, minutes, focus,
+        comment, count, tier, focus,
       });
       Store.addRecentSuggestion(plan.exercises.map(e => e.name));
 
       currentWorkout = {
         ...plan,
         comment,
-        requestedMinutes: minutes,
+        tier,
+        plannedCount: count,
         exercises: plan.exercises.map(e => ({ ...e, done: false, actualSets: "", actualReps: "", actualWeight: "" })),
         startedAt: new Date().toISOString(),
       };
@@ -131,10 +137,6 @@
   }
 
   /* ---------------- Render workout ---------------- */
-  function workMinutes() {
-    return currentWorkout.exercises.reduce((sum, e) => sum + (e.minutes || 0), 0);
-  }
-
   function renderWorkout() {
     if (!currentWorkout) return;
     $("#generator").classList.add("hidden");
@@ -148,11 +150,10 @@
 
     $("#workout-title").textContent = currentWorkout.title;
     $("#coach-note").textContent = currentWorkout.coach_note;
+    const tierLabel = TIER_LABELS[currentWorkout.tier] || "Session";
     $("#workout-meta").innerHTML = [
-      `⏱️ ~${workMinutes()} min of work`,
+      `📋 ${tierLabel} · ${currentWorkout.exercises.length} exercises`,
       `🎯 ${escapeHtml(currentWorkout.focus)}`,
-      `${currentWorkout.exercises.length} exercises`,
-      `+ ${Api.RESERVED_MINUTES} min your own warm-up & stretch`,
     ].map(t => `<span class="meta-pill">${t}</span>`).join("");
 
     const list = $("#exercise-list");
@@ -291,12 +292,10 @@
   function updateProgress() {
     const total = currentWorkout.exercises.length;
     const done = currentWorkout.exercises.filter(e => e.done).length;
-    const minutesLeft = currentWorkout.exercises
-      .filter(e => !e.done)
-      .reduce((sum, e) => sum + (e.minutes || 0), 0);
+    const left = total - done;
     $("#progress-fill").style.width = total ? `${(done / total) * 100}%` : "0%";
-    $("#progress-label").textContent = minutesLeft > 0
-      ? `${done}/${total} · ~${minutesLeft} min left`
+    $("#progress-label").textContent = left > 0
+      ? `${done}/${total} · ${left} to go`
       : `${done}/${total} done 🎉`;
   }
 
@@ -539,7 +538,7 @@
       Store.updateSession(editingSessionId, {
         title: currentWorkout.title,
         focus: currentWorkout.focus,
-        requestedMinutes: currentWorkout.requestedMinutes,
+        tier: currentWorkout.tier, plannedCount: currentWorkout.plannedCount,
         comment: currentWorkout.comment,
         exercises: serializeExercises(),
       });
@@ -562,7 +561,7 @@
       date: new Date().toISOString().slice(0, 10),
       title: currentWorkout.title,
       focus: currentWorkout.focus,
-      requestedMinutes: currentWorkout.requestedMinutes,
+      tier: currentWorkout.tier, plannedCount: currentWorkout.plannedCount,
       comment: currentWorkout.comment,
       exercises: serializeExercises(),
     });
@@ -581,7 +580,7 @@
     $("#generator").classList.remove("hidden");
     $("#user-comment").value = "";
     $$("#focus-chips .chip").forEach(c => c.classList.remove("selected"));
-    preselectDefaultDuration();
+    renderSizeChips();
   });
 
   $("#btn-discard").addEventListener("click", () => {
@@ -618,7 +617,7 @@
       title: session.title,
       focus: session.focus,
       coach_note: session.coach_note || `Saved session from ${formatDate(session.date)}.`,
-      requestedMinutes: session.requestedMinutes,
+      tier: session.tier || "standard", plannedCount: session.plannedCount || session.exercises.length,
       comment: session.comment || "",
       exercises: session.exercises.map(e => ({
         name: e.name,
@@ -650,7 +649,7 @@
           <span class="history-title">${escapeHtml(s.title)}</span>
           <span class="history-date">${formatDate(s.date)}</span>
         </div>
-        <div class="history-stats">🎯 ${escapeHtml(s.focus)} · ⏱️ ${s.requestedMinutes} min · ✅ ${done}/${s.exercises.length} done</div>
+        <div class="history-stats">🎯 ${escapeHtml(s.focus)} · 📋 ${escapeHtml(TIER_LABELS[s.tier] || `${s.requestedMinutes || "?"} min`)} · ✅ ${done}/${s.exercises.length} done</div>
         <div class="history-exercises">
           ${s.comment ? `<div class="history-comment">💬 "${escapeHtml(s.comment)}"</div>` : ""}
           ${s.exercises.map(e => {
@@ -705,7 +704,7 @@
     $("#set-equipment").value = s.equipment;
     $("#set-levels").value = s.levels;
     $("#set-goals").value = s.goals;
-    $("#set-duration").value = String(s.defaultDuration);
+    $("#set-size").value = s.defaultSize || "standard";
     $("#set-apikey").value = s.apiKey;
   }
 
@@ -714,10 +713,10 @@
       equipment: $("#set-equipment").value.trim(),
       levels: $("#set-levels").value.trim(),
       goals: $("#set-goals").value.trim(),
-      defaultDuration: parseInt($("#set-duration").value, 10),
+      defaultSize: $("#set-size").value,
       apiKey: $("#set-apikey").value.trim(),
     });
-    preselectDefaultDuration();
+    renderSizeChips();
     const ok = $("#settings-saved");
     ok.classList.remove("hidden");
     setTimeout(() => ok.classList.add("hidden"), 2000);
@@ -744,7 +743,7 @@
       version: 1,
       exportedAt: new Date().toISOString(),
       // deliberately excludes the API key
-      settings: { equipment: s.equipment, levels: s.levels, goals: s.goals, defaultDuration: s.defaultDuration },
+      settings: { equipment: s.equipment, levels: s.levels, goals: s.goals, defaultSize: s.defaultSize },
       history,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -850,7 +849,7 @@
   /* ---------------- Init ---------------- */
   function init() {
     loadSettingsForm();
-    preselectDefaultDuration();
+    renderSizeChips();
     updateStreak();
 
     const saved = Store.getCurrentWorkout();
